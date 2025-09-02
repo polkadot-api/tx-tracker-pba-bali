@@ -36,12 +36,23 @@ export default function magofoco(api: API, outputApi: OutputAPI) {
   //     a) pruned, or
   //     b) older than the currently finalized block.
 
+  interface Block {
+    blockHash: string
+    parent: string
+    children: string | undefined
+  }
+
+  const transactions: string[] = []
+  const blocks: Block[] = []
+
   const onNewBlock = ({ blockHash, parent }: NewBlockEvent) => {
-    // TODO:: implement it
+    if (!blocks.some((block) => block.blockHash === blockHash)) {
+      blocks.push({ parent: parent, children: undefined, blockHash })
+    }
   }
 
   const onNewTx = ({ value: transaction }: NewTransactionEvent) => {
-    // TODO:: implement it
+    transactions.push(transaction)
   }
 
   const onFinalized = ({ blockHash }: FinalizedEvent) => {
@@ -52,6 +63,8 @@ export default function magofoco(api: API, outputApi: OutputAPI) {
     switch (event.type) {
       case "newBlock": {
         onNewBlock(event)
+        console.log(blocks)
+
         break
       }
       case "newTransaction": {
