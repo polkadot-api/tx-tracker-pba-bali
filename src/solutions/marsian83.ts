@@ -7,13 +7,26 @@ import type {
   OutputAPI,
 } from "../types"
 
+type TxnState = "introduced" | "settled" | "finalized"
+
 export default function marsian83(api: API, outputApi: OutputAPI) {
   const chain = new Chain()
 
+  const txnStates: Record<string, TxnState> = {}
+
   const onNewBlock = ({ blockHash, parent }: NewBlockEvent) => {
     chain.addBlock(blockHash, parent)
-    const txns = api.getBody(blockHash)
-    txns.sort((a, b) => chain.transactionIds[b] - chain.transactionIds[a])
+    const txnsRaw = api.getBody(blockHash)
+    const txns = txnsRaw
+      .filter((t) => !!chain.transactionIds[t])
+      .toSorted((a, b) => chain.transactionIds[b] - chain.transactionIds[a])
+
+    if (
+      blockHash ===
+      "0xab1a39cff8e766a03c03883c5420471dd05266af0cda0161e7dc164ec2506867"
+    ) {
+      console.log(txnsRaw)
+    }
 
     for (const txn of txns) {
       chain.registerTxn(blockHash, txn)
@@ -32,15 +45,24 @@ export default function marsian83(api: API, outputApi: OutputAPI) {
 
   const onNewTx = ({ value: transaction }: NewTransactionEvent) => {
     chain.addTxn(transaction)
+    toBeSettled.add(transaction)
   }
 
   const onFinalized = ({ blockHash }: FinalizedEvent) => {
-    const siblings = chain.siblings(blockHash)
+    const pruningResults = chain.preserveOnlyChain(blockHash)
+    if (!pruningResults) return
+    const { killed, finalized } = pruningResults
+    killed && api.unpin(killed)
 
-    for (const sibling of siblings) {
-      const pruned = chain.pruneBranch(sibling.hash) || []
-      api.unpin(pruned)
-    }
+    // for (const f of finalized) {
+    //   const valid = api.isTxValid(blockHash, f)
+    //   const successful = valid ? api.isTxSuccessful(blockHash, f) : false
+    //   outputApi.onTxDone(f, {
+    //     blockHash: f,
+    //     successful,
+    //     type: valid ? "valid" : "invalid",
+    //   })
+    // }
   }
 
   return (event: IncomingEvent) => {
@@ -67,9 +89,10 @@ interface Block {
 }
 
 class Chain {
+  lastFinalized: string = ""
   blocks: Block[]
   transactionIds: Record<string, number>
-  private currentTxnId: number = 0
+  private currentTxnId: number = 1
 
   constructor() {
     this.blocks = []
@@ -77,6 +100,11 @@ class Chain {
   }
 
   addBlock(hash: string, parent: string) {
+    if (!this.lastFinalized) this.lastFinalized = hash
+    const parentBlock = this.getBlock(parent)
+    if (parentBlock) {
+      parentBlock.children.push({ hash: hash })
+    }
     this.blocks.push({ hash, parent: { hash: parent }, children: [], txns: [] })
   }
 
@@ -114,15 +142,15 @@ class Chain {
     const block = this.getBlock(hash)
     if (!block) return
 
-    let pruned = []
+    let pruned: string[] = []
 
-    const children = block.children
-    for (const child of children) {
-      pruned.push(child.hash)
-      this.pruneBranch(child.hash)
+    for (const child of block.children) {
+      const childPruned = this.pruneBranch(child.hash)
+      if (childPruned) pruned = pruned.concat(childPruned)
     }
 
     this.removeBlock(hash)
+    pruned.push(hash)
     return pruned
   }
 
@@ -130,6 +158,39 @@ class Chain {
     const block = this.getBlock(hash)
     if (!block) return
 
+    const parent = this.getBlock(block.parent.hash)
+    if (parent) parent.children = parent.children.filter((c) => c.hash !== hash)
+
     this.blocks = this.blocks.filter((b) => b !== block)
+  }
+
+  preserveOnlyChain(blockHash: string) {
+    const block = this.getBlock(blockHash)
+    if (!block) return
+
+    let killed: string[] = []
+    let finalized: string[] = []
+
+    let current = block.parent
+    finalized.push(current.hash)
+    while (current.hash != this.lastFinalized) {
+      finalized.push(current.hash)
+
+      const toKill = this.siblings(current.hash)
+
+      for (const sib of toKill) {
+        const pruned = this.pruneBranch(sib.hash)
+        if (!pruned) continue
+        killed = killed.concat(pruned)
+      }
+
+      const next = this.getBlock(current.hash)?.parent
+      if (!next) break
+      current = next
+    }
+
+    this.lastFinalized = blockHash
+
+    return { killed, finalized }
   }
 }
