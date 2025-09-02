@@ -1,0 +1,20 @@
+{
+  "name": "tx-tracker-pba",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "prettier": "^3.3.3"
+  },
+  "scripts": {
+    "lint": "prettier . --write"
+  },
+  "prettier": {
+    "printWidth": 80,
+    "semi": false,
+    "trailingComma": "all"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
