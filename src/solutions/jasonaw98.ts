@@ -9,6 +9,7 @@ import type {
 } from "../types"
 
 export default function jasonaw98(api: API, outputApi: OutputAPI) {
+
   // Requirements:
   //
   // 1) When a transaction becomes "settled"-which always occurs upon receiving a "newBlock" event-
