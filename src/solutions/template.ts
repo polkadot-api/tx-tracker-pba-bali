@@ -42,6 +42,7 @@ export default function aryaramadika(api: API, outputApi: OutputAPI) {
   // - Upon receiving a "finalized" event, call `api.unpin` to unpin blocks that are either:
   //     a) pruned, or
   //     b) older than the currently finalized block.
+  const blockArray = new Map<string, Block>() // hash → Block
 
   const txQueue: string[] = []
   const settledByBlock = new Map<string, Map<string, Settled>>()
@@ -52,27 +53,38 @@ export default function aryaramadika(api: API, outputApi: OutputAPI) {
     block: Block,
     excludeBlock?: string,
   ): string[] => {
-    // let result: string[] = []
+    const result: string[] = []
 
-    // for (const child of block.children) {
-    //   if (child === excludeBlock) continue
-    //   result.push(child)
+    for (const childHash of block.children ?? []) {
+      if (childHash === excludeBlock) continue
 
-    //   const childBlock = settledByBlock.get(child)
-    //   if (childBlock) {
-    //     result = result.concat(getDescendantBlocks(childBlock, excludeBlock))
-    //   }
-    // }
+      result.push(childHash)
 
+      const childBlock = blockArray.get(childHash)
+      if (childBlock) {
+        result.push(...getDescendantBlocks(childBlock, excludeBlock))
+      }
+    }
     // return result
-    return []
+    return result
   }
   // TODO: WILL ADDED AFTER CLASS
   const getPrunedBlocks = (
     parentBlock: Block | undefined,
     finalizedChild: string,
   ): string[] => {
-    return []
+    if (!parentBlock) return []
+    const toPrune: string[] = []
+
+    for (const childHash of parentBlock.children ?? []) {
+      if (childHash === finalizedChild) continue
+      toPrune.push(childHash)
+      const childBlock = blockArray.get(childHash)
+      if (childBlock)
+        toPrune.push(...getDescendantBlocks(childBlock, finalizedChild))
+    }
+
+    return toPrune
   }
 
   const onNewBlock = ({ blockHash }: NewBlockEvent) => {
