@@ -7,7 +7,13 @@ import type {
   OutputAPI,
 } from "../types"
 
-export default function yourGhHandle(api: API, outputApi: OutputAPI) {
+
+const bodies: Record<string, string[]> = {}
+const seenBlocks = new Set<string>()
+const seenTxs = new Set<string>()
+
+
+export default function divljo31(api: API, outputApi: OutputAPI) {
     // Requirements:
     //
     // 1) When a transaction becomes "settled"-which always occurs upon receiving a "newBlock" event-
@@ -38,14 +44,63 @@ export default function yourGhHandle(api: API, outputApi: OutputAPI) {
 
     const onNewBlock = ({ blockHash, parent }: NewBlockEvent) => {
       // TODO:: implement it
+
+      const blockBody = api.getBody(blockHash)
+      bodies[blockHash] = blockBody
+      seenBlocks.add(blockHash)
+
+      for(const tx of blockBody){
+        if(!seenTxs.has(tx)){
+          onNewTx({
+            type: "newTransaction",
+            value: tx
+          })
+        }
+
+        if(blockBody.includes(tx)){
+          if(api.isTxValid(blockHash, tx)){
+            if(api.isTxSuccessful(blockHash,tx)){
+              outputApi.onTxSettled(tx, {blockHash, type:"valid", successful: true});
+              seenTxs.delete(tx);
+            } else {       
+              outputApi.onTxSettled(tx,{blockHash, type:"valid",successful: false});
+              seenTxs.delete(tx);
+            }
+          } else {
+            outputApi.onTxSettled(tx, {blockHash, type: "invalid"});
+          }
+        }
+      }
+      if(seenTxs.size !== 0){
+        seenTxs.forEach(tx => outputApi.onTxSettled(tx, {blockHash, type: "invalid"}));
+        seenTxs.clear();
+      }
     }
 
     const onNewTx = ({ value: transaction }: NewTransactionEvent) => {
-      // TODO:: implement it
+      if (!seenTxs.has(transaction)) {
+        seenTxs.add(transaction)
+      }
+    
     }
 
     const onFinalized = ({ blockHash }: FinalizedEvent) => {
       // TODO:: implement it
+      const finalizedBody = api.getBody(blockHash)
+
+      for(const tx of finalizedBody){
+          if(api.isTxValid(blockHash, tx)){
+            if(api.isTxSuccessful(blockHash,tx)){
+              outputApi.onTxDone(tx, {blockHash, type:"valid", successful: true});
+            } else {         
+              outputApi.onTxDone(tx,{blockHash, type:"valid",successful: false});
+            }
+          }
+          else{ 
+           outputApi.onTxDone(tx, {blockHash, type: "invalid"});
+          } 
+        }
+
     }
 
     return (event: IncomingEvent) => {
