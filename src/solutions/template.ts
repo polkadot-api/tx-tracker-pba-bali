@@ -8,7 +8,6 @@ import type {
 } from "../types"
 
 export default function yourGhHandle(api: API, outputApi: OutputAPI) {
-  return (event: IncomingEvent) => {
     // Requirements:
     //
     // 1) When a transaction becomes "settled"-which always occurs upon receiving a "newBlock" event-
@@ -63,5 +62,4 @@ export default function yourGhHandle(api: API, outputApi: OutputAPI) {
           onFinalized(event)
       }
     }
-  }
 }
