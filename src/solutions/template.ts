@@ -8,7 +8,7 @@ import type {
   Settled,
 } from "../types"
 
-export default function kalmndo(api: API, outputApi: OutputAPI) {
+export default function aryaramadika(api: API, outputApi: OutputAPI) {
   // Requirements:
   //
   // 1) When a transaction becomes "settled"-which always occurs upon receiving a "newBlock" event-
