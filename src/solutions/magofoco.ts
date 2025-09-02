@@ -46,9 +46,22 @@ export default function magofoco(api: API, outputApi: OutputAPI) {
   const blocks: Block[] = []
 
   const onNewBlock = ({ blockHash, parent }: NewBlockEvent) => {
+    const transactionsToSettleInBlock: string[] = []
+
     if (!blocks.some((block) => block.blockHash === blockHash)) {
       blocks.push({ parent: parent, children: undefined, blockHash })
     }
+
+    const doesParentExist = blocks.some((block) => block.blockHash === parent)
+
+    if (parent && doesParentExist) {
+      const parentBlock = blocks.find((block) => block.blockHash === parent)
+      if (parentBlock) {
+        parentBlock.children = blockHash
+      }
+    }
+
+    const blockBody = api.getBody(blockHash)
   }
 
   const onNewTx = ({ value: transaction }: NewTransactionEvent) => {
