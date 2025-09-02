@@ -48,7 +48,7 @@ export default function aryaramadika(api: API, outputApi: OutputAPI) {
   const settledByBlock = new Map<string, Map<string, Settled>>()
   const doneTx = new Set<string>()
 
-  // TODO: WILL ADDED AFTER CLASS
+  // TODO: not yet implemetented
   const getDescendantBlocks = (
     block: Block,
     excludeBlock?: string,
@@ -68,7 +68,7 @@ export default function aryaramadika(api: API, outputApi: OutputAPI) {
     // return result
     return result
   }
-  // TODO: WILL ADDED AFTER CLASS
+  // TODO: not yet implemetented
   const getPrunedBlocks = (
     parentBlock: Block | undefined,
     finalizedChild: string,
