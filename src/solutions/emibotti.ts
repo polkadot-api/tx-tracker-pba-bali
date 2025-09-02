@@ -121,6 +121,7 @@ export default function emibotti(api: API, outputApi: OutputAPI) {
         transaction.valid = true
         transaction.settledBlock = blockHash
         transaction.settled = true
+        currentBlock.settled = true
 
         outputApi.onTxSettled(transaction.id, {
           type: "valid",
@@ -134,7 +135,6 @@ export default function emibotti(api: API, outputApi: OutputAPI) {
   }
 
   const onNewTx = ({ value: transaction }: NewTransactionEvent) => {
-    // console.log("new transaction", transaction)
     transactions.push({
       id: transaction,
       settled: false,
@@ -144,8 +144,6 @@ export default function emibotti(api: API, outputApi: OutputAPI) {
   }
 
   const onFinalized = ({ blockHash }: FinalizedEvent) => {
-    // console.log("finalized", blockHash)
-
     for (const transaction of transactions) {
       if (
         transaction.settledBlock === blockHash &&
