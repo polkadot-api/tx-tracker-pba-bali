@@ -128,10 +128,8 @@ export const evaluateSolution = (
     const actualResult = solver(solution)
     for (let i = 0; i < actualResult.outputEvents.length; i++) {
       if (
-        !Bun.deepEquals(
-          actualResult.outputEvents[i],
-          expectedResult.outputEvents[i],
-        )
+        JSON.stringify(actualResult.outputEvents[i]) !==
+        JSON.stringify(expectedResult.outputEvents[i])
       ) {
         console.error("Expected:", expectedResult.outputEvents[i])
         console.error("Received:", actualResult.outputEvents[i])
@@ -176,7 +174,7 @@ export const evaluateSolution = (
     for (let i = 0; i < actualResult.unpins.length; i++) {
       const expected = expectedResult.unpins[i].blocks.sort()
       const received = actualResult.unpins[i].blocks.sort()
-      if (!Bun.deepEquals(expected, received)) {
+      if (JSON.stringify(expected) !== JSON.stringify(received)) {
         console.warn("Expected Unpinning message:", expected)
         console.warn("Received Unpinning message:", received)
         console.warn("No Unpinning points")
