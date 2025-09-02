@@ -138,7 +138,6 @@ export const evaluateSolution = (
         return 0
       }
     }
-    console.log("actual", actualResult)
 
     if (actualResult.outputEvents.length < expectedResult.outputEvents.length) {
       console.error("missing events")
