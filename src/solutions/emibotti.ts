@@ -36,48 +36,140 @@ export default function emibotti(api: API, outputApi: OutputAPI) {
   //     a) pruned, or
   //     b) older than the currently finalized block.
 
-  const transactions: string[] = []
+  type BlockHash = string
+
+  interface Block {
+    hash: BlockHash
+    body: any
+    parent: BlockHash | null
+    children: BlockHash[]
+    settled: boolean
+  }
+
+  const blocks: Map<BlockHash, Block> = new Map()
+
+  interface TxInfo {
+    id: string
+    settled: boolean
+    settledBlock: BlockHash | null
+    valid: boolean | null
+    successful?: boolean
+  }
+
+  const transactions: TxInfo[] = []
+
+  const isSettledOrDescendantOfSettled = (blockHash: BlockHash): boolean => {
+    let currentBlock = blocks.get(blockHash)
+    while (currentBlock) {
+      if (currentBlock.settled) return true
+      if (currentBlock.parent === null) return false
+      currentBlock = blocks.get(currentBlock.parent)
+    }
+    return false
+  }
 
   const onNewBlock = ({ blockHash, parent }: NewBlockEvent) => {
     const blockBody = api.getBody(blockHash)
-    for (const tx of transactions) {
-      // INFO: Valid: the transaction can be included into the next block.
-      // INFO: A transaction could be valid against one block, but invalid against a "sibling fork" of the same height
-      if (api.isTxValid(blockHash, tx)) {
-        const successful = api.isTxSuccessful(blockHash, tx)
+    blocks.set(blockHash, {
+      hash: blockHash,
+      parent,
+      body: blockBody,
+      children: [],
+      settled: false,
+    })
+    if (parent) {
+      const parentBlock = blocks.get(parent)
+      if (parentBlock) {
+        parentBlock.children.push(blockHash)
+      }
+    }
 
-        outputApi.onTxSettled(tx, {
-          type: "valid",
-          // INFO: If `successful` is `false` it is a Failed transaction
-          successful,
+    // TODO: Remember to mark block as settled
+    if (isSettledOrDescendantOfSettled(blockHash)) {
+      return
+    }
+
+    const currentBlock = blocks.get(blockHash)!
+
+    for (const transaction of transactions) {
+      if (transaction.settled) continue
+
+      const isTransactionPresentInTheBody = blockBody.find(
+        (tx) => tx === transaction.id,
+      )
+      const isItValidInThisBlock = api.isTxValid(blockHash, transaction.id)
+
+      if (!isTransactionPresentInTheBody) {
+        if (isItValidInThisBlock) return
+
+        transaction.valid = false
+        transaction.settledBlock = blockHash
+        transaction.successful = false
+        transaction.settled = true
+        currentBlock.settled = true
+
+        outputApi.onTxSettled(transaction.id, {
+          type: "invalid",
           blockHash,
+        })
+      } else {
+        const transactionWasSuccessful = api.isTxSuccessful(
+          blockHash,
+          transaction.id,
+        )
+        transaction.successful = transactionWasSuccessful
+        transaction.valid = true
+        transaction.settledBlock = blockHash
+        transaction.settled = true
+
+        outputApi.onTxSettled(transaction.id, {
+          type: "valid",
+          blockHash,
+          successful: transactionWasSuccessful,
         })
 
         // "Future" Valid: the transaction can not yet be included into a block, but it may be included in the future. I.e. nonce too high.
-        // TODO: How to check nonce?
-      } else {
-        // INFO: Invalid: the transaction will "never" be able to be included into a block (and thus, not be broadcasted).
-        // TODO: remove transaction from list so it cannot be broadcasted
-        transactions.splice(transactions.indexOf(tx), 1)
       }
     }
   }
 
   const onNewTx = ({ value: transaction }: NewTransactionEvent) => {
-    transactions.push(transaction)
+    // console.log("new transaction", transaction)
+    transactions.push({
+      id: transaction,
+      settled: false,
+      settledBlock: null,
+      valid: null,
+    })
   }
 
   const onFinalized = ({ blockHash }: FinalizedEvent) => {
-    for (const tx of transactions) {
-      if (api.isTxSuccessful(blockHash, tx)) {
-        outputApi.onTxDone(tx, {
-          type: "valid",
-          blockHash,
-          successful: true,
-        })
+    // console.log("finalized", blockHash)
 
-        // TODO: Remove transaction from list
-        transactions.splice(transactions.indexOf(tx), 1)
+    for (const transaction of transactions) {
+      if (
+        transaction.settledBlock === blockHash &&
+        isSettledOrDescendantOfSettled(blockHash)
+      ) {
+        outputApi.onTxDone(transaction.id, {
+          type: transaction.valid ? "valid" : "invalid",
+          blockHash,
+          successful: !!transaction.successful,
+        })
+      }
+    }
+
+    // Remove blocks finalized iterating until the parent
+    let currentBlock = blocks.get(blockHash)
+    while (!!currentBlock) {
+      // Remove the block from the map
+      blocks.delete(currentBlock.hash)
+
+      // Move to the parent block
+      if (currentBlock.parent) {
+        currentBlock = blocks.get(currentBlock.parent)
+      } else {
+        currentBlock = undefined
       }
     }
   }
