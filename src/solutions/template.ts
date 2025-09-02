@@ -8,6 +8,12 @@ import type {
   Settled,
 } from "../types"
 
+type Block = {
+  hash: string
+  parent: string | null
+  children: string[]
+}
+
 export default function aryaramadika(api: API, outputApi: OutputAPI) {
   // Requirements:
   //
@@ -36,10 +42,50 @@ export default function aryaramadika(api: API, outputApi: OutputAPI) {
   // - Upon receiving a "finalized" event, call `api.unpin` to unpin blocks that are either:
   //     a) pruned, or
   //     b) older than the currently finalized block.
+  const blockArray = new Map<string, Block>() // hash → Block
 
   const txQueue: string[] = []
   const settledByBlock = new Map<string, Map<string, Settled>>()
   const doneTx = new Set<string>()
+
+  // TODO: not yet implemetented
+  const getDescendantBlocks = (
+    block: Block,
+    excludeBlock?: string,
+  ): string[] => {
+    const result: string[] = []
+
+    for (const childHash of block.children ?? []) {
+      if (childHash === excludeBlock) continue
+
+      result.push(childHash)
+
+      const childBlock = blockArray.get(childHash)
+      if (childBlock) {
+        result.push(...getDescendantBlocks(childBlock, excludeBlock))
+      }
+    }
+    // return result
+    return result
+  }
+  // TODO: not yet implemetented
+  const getPrunedBlocks = (
+    parentBlock: Block | undefined,
+    finalizedChild: string,
+  ): string[] => {
+    if (!parentBlock) return []
+    const toPrune: string[] = []
+
+    for (const childHash of parentBlock.children ?? []) {
+      if (childHash === finalizedChild) continue
+      toPrune.push(childHash)
+      const childBlock = blockArray.get(childHash)
+      if (childBlock)
+        toPrune.push(...getDescendantBlocks(childBlock, finalizedChild))
+    }
+
+    return toPrune
+  }
 
   const onNewBlock = ({ blockHash }: NewBlockEvent) => {
     const body = api.getBody(blockHash)
