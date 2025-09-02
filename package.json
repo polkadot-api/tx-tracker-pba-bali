@@ -12,7 +12,8 @@
   "prettier": {
     "printWidth": 80,
     "semi": false,
-    "trailingComma": "all"
+    "trailingComma": "all",
+    "tabWidth": 4
   },
   "peerDependencies": {
     "typescript": "^5.0.0"
