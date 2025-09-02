@@ -40,13 +40,26 @@ export default function yourGhHandle(api: API, outputApi: OutputAPI) {
   const txnQueue: string[] = []
   const blockToParentMapping = new Map<string, string>()
   const txnToBlockMapping = new Map<string, string>()
+  const blockHashToBody = new Map<string, string[]>()
+  const txnValidityCache = new Map<string, boolean>()
+  const txnSuccessCache = new Map<string, boolean>()
 
   const onNewBlock = ({ blockHash, parent }: NewBlockEvent) => {
-    const blockBodyTxns = api.getBody(blockHash)
+    let blockBodyTxns = blockHashToBody.get(blockHash)
+    if (!blockBodyTxns) {
+      blockBodyTxns = api.getBody(blockHash)
+      blockHashToBody.set(blockHash, blockBodyTxns)
+    }
     blockToParentMapping.set(blockHash, parent)
     
     for (const txn of txnQueue) {
-      const valid = api.isTxValid(blockHash, txn)
+      const validityKey = `${blockHash}-${txn}`
+      let valid = txnValidityCache.get(validityKey)
+      if (valid === undefined) {
+        valid = api.isTxValid(blockHash, txn)
+        txnValidityCache.set(validityKey, valid)
+      }
+      
       if (!valid) {
         outputApi.onTxSettled(txn, {
           blockHash,
@@ -54,7 +67,14 @@ export default function yourGhHandle(api: API, outputApi: OutputAPI) {
         })
         txnToBlockMapping.set(txn, blockHash)
       } else if (blockBodyTxns.includes(txn)) {
-        const successful = api.isTxSuccessful(blockHash, txn)
+
+        const successKey = `${blockHash}-${txn}`
+        let successful = txnSuccessCache.get(successKey)
+        if (successful === undefined) {
+          successful = api.isTxSuccessful(blockHash, txn)
+          txnSuccessCache.set(successKey, successful)
+        }
+        
         outputApi.onTxSettled(txn, {
           blockHash,
           type: "valid",
@@ -83,9 +103,18 @@ export default function yourGhHandle(api: API, outputApi: OutputAPI) {
 
     const txnToProcess = [...txnQueue]
     for (const txn of txnToProcess) {
+      
       const shouldFinalize = blocksToFinalize.some(blockHash => {
-        const blockBody = api.getBody(blockHash)
-        const valid = api.isTxValid(blockHash, txn)
+        const blockBody = blockHashToBody.get(blockHash)
+        if (!blockBody) return false
+
+        const validityKey = `${blockHash}-${txn}`
+        let valid = txnValidityCache.get(validityKey)
+        if (valid === undefined) {
+          valid = api.isTxValid(blockHash, txn)
+          txnValidityCache.set(validityKey, valid)
+        }
+        
         if (blockBody.includes(txn)) {
           return true
         }
@@ -97,14 +126,26 @@ export default function yourGhHandle(api: API, outputApi: OutputAPI) {
       
       if (shouldFinalize) {
         const settledBlockHash = txnToBlockMapping.get(txn)!
-        const valid = api.isTxValid(settledBlockHash, txn)
+        const validityKey = `${settledBlockHash}-${txn}`
+        let valid = txnValidityCache.get(validityKey)
+        if (valid === undefined) {
+          valid = api.isTxValid(settledBlockHash, txn)
+          txnValidityCache.set(validityKey, valid)
+        }
+        
         if (!valid) {
           outputApi.onTxDone(txn, {
             blockHash: settledBlockHash,
             type: "invalid",
           })
         } else {
-          const successful = api.isTxSuccessful(settledBlockHash, txn)
+          const successKey = `${settledBlockHash}-${txn}`
+          let successful = txnSuccessCache.get(successKey)
+          if (successful === undefined) {
+            successful = api.isTxSuccessful(settledBlockHash, txn)
+            txnSuccessCache.set(successKey, successful)
+          }
+          
           outputApi.onTxDone(txn, {
             blockHash: settledBlockHash,
             type: "valid",
