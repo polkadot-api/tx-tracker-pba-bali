@@ -8,6 +8,12 @@ import type {
   Settled,
 } from "../types"
 
+type Block = {
+  hash: string
+  parent: string | null
+  children: string[]
+}
+
 export default function aryaramadika(api: API, outputApi: OutputAPI) {
   // Requirements:
   //
@@ -40,6 +46,34 @@ export default function aryaramadika(api: API, outputApi: OutputAPI) {
   const txQueue: string[] = []
   const settledByBlock = new Map<string, Map<string, Settled>>()
   const doneTx = new Set<string>()
+
+  // TODO: WILL ADDED AFTER CLASS
+  const getDescendantBlocks = (
+    block: Block,
+    excludeBlock?: string,
+  ): string[] => {
+    // let result: string[] = []
+
+    // for (const child of block.children) {
+    //   if (child === excludeBlock) continue
+    //   result.push(child)
+
+    //   const childBlock = settledByBlock.get(child)
+    //   if (childBlock) {
+    //     result = result.concat(getDescendantBlocks(childBlock, excludeBlock))
+    //   }
+    // }
+
+    // return result
+    return []
+  }
+  // TODO: WILL ADDED AFTER CLASS
+  const getPrunedBlocks = (
+    parentBlock: Block | undefined,
+    finalizedChild: string,
+  ): string[] => {
+    return []
+  }
 
   const onNewBlock = ({ blockHash }: NewBlockEvent) => {
     const body = api.getBody(blockHash)
