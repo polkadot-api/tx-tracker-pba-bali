@@ -106,6 +106,35 @@ export default function magofoco(api: API, outputApi: OutputAPI) {
         transactionsToSettleInBlock.push({ transaction, arrivalIndex })
       }
     }
+
+    // Sort by arrival order, since many transactions may be settled in the same block
+    // We need to keep the order in which they arrived, in order to settle them
+    transactionsToSettleInBlock.sort((a, b) => a.arrivalIndex - b.arrivalIndex)
+
+    for (const { transaction } of transactionsToSettleInBlock) {
+      const isTransactionValid = api.isTxValid(blockHash, transaction)
+      let settledState: Settled
+
+      if (isTransactionValid) {
+        settledState = {
+          blockHash,
+          type: "valid",
+          successful: api.isTxSuccessful(blockHash, transaction),
+        }
+      } else {
+        settledState = {
+          blockHash,
+          type: "invalid",
+        }
+      }
+
+      outputApi.onTxSettled(transaction, settledState)
+      settledTransactions.push({
+        transaction,
+        settled: settledState,
+        arrivalIndex: transactions.indexOf(transaction),
+      })
+    }
   }
 
   const onNewTx = ({ value: transaction }: NewTransactionEvent) => {
@@ -113,7 +142,52 @@ export default function magofoco(api: API, outputApi: OutputAPI) {
   }
 
   const onFinalized = ({ blockHash }: FinalizedEvent) => {
-    // TODO:: implement it
+    const finalizedTransactions: SettledTransaction[] = []
+
+    const finalizedBlocks: string[] = []
+    let currentBlock = blocks.find((block) => block.blockHash === blockHash)
+
+    // This is to get the list of blocks that are finalized (cannot change)
+    while (currentBlock) {
+      finalizedBlocks.push(currentBlock.blockHash)
+      currentBlock = blocks.find(
+        (block) => block.blockHash === currentBlock?.parent,
+      )
+    }
+
+    // Now, we can check the finalized transactions of those blocks finzalied
+    for (const settledTransaction of settledTransactions) {
+      if (finalizedBlocks.includes(settledTransaction.settled.blockHash)) {
+        finalizedTransactions.push({
+          transaction: settledTransaction.transaction,
+          arrivalIndex: settledTransaction.arrivalIndex,
+          settled: settledTransaction.settled,
+        })
+      }
+    }
+
+    finalizedTransactions.sort((a, b) => a.arrivalIndex - b.arrivalIndex)
+
+    // Once finalized, the transaction is done (permanant into the block)
+    for (const { transaction, settled } of finalizedTransactions) {
+      outputApi.onTxDone(transaction, settled)
+
+      const index = settledTransactions.findIndex(
+        (s) =>
+          s.transaction === transaction &&
+          s.settled.blockHash === settled.blockHash,
+      )
+      if (index !== -1) {
+        settledTransactions.splice(index, 1)
+      }
+    }
+
+    for (const hash of finalizedBlocks) {
+      const blockIndex = blocks.findIndex((block) => block.blockHash === hash)
+      if (blockIndex !== -1) {
+        blocks.splice(blockIndex, 1)
+      }
+    }
   }
 
   return (event: IncomingEvent) => {
