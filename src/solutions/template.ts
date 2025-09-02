@@ -41,36 +41,35 @@ export default function aryaramadika(api: API, outputApi: OutputAPI) {
   const settledByBlock = new Map<string, Map<string, Settled>>()
   const doneTx = new Set<string>()
 
-  const onNewBlock = ({ blockHash, parent }: NewBlockEvent) => {
+  const onNewBlock = ({ blockHash }: NewBlockEvent) => {
     const body = api.getBody(blockHash)
 
-    let byBlock = settledByBlock.get(blockHash)
-    if (!byBlock) {
-      byBlock = new Map<string, Settled>()
-      settledByBlock.set(blockHash, byBlock)
-    }
+    settledByBlock.set(
+      blockHash,
+      settledByBlock.get(blockHash) ?? new Map<string, Settled>(),
+    )
+    const byBlock = settledByBlock.get(blockHash)!
+
     for (const tx of txQueue) {
       if (byBlock.has(tx)) continue
 
-      let state: Settled | null = null
+      const inBody = body.includes(tx)
 
-      if (body.includes(tx)) {
-        const valid = api.isTxValid(blockHash, tx)
-        if (valid) {
-          const successful = api.isTxSuccessful(blockHash, tx)
-          state = { type: "valid", successful, blockHash }
-        } else {
-          state = { type: "invalid", blockHash }
-        }
-      } else {
-        const valid = api.isTxValid(blockHash, tx)
-        if (!valid) state = { type: "invalid", blockHash }
-      }
+      // If tx not in body and still valid, nothing to do yet
+      if (!inBody && api.isTxValid(blockHash, tx)) continue
 
-      if (state) {
-        byBlock.set(tx, state)
-        outputApi.onTxSettled(tx, state)
-      }
+      //  adjsutment checker
+      const state: Settled =
+        inBody && api.isTxValid(blockHash, tx)
+          ? {
+              type: "valid",
+              successful: api.isTxSuccessful(blockHash, tx),
+              blockHash,
+            }
+          : { type: "invalid", blockHash }
+
+      byBlock.set(tx, state)
+      outputApi.onTxSettled(tx, state)
     }
   }
 
