@@ -1,0 +1,2 @@
+I found this assigment quite challenging. Specifically, understading that an empty block (aka a block that does not contain my transaction hash, the transaction I am watching), can still affect transaction I am watching.
+After a lot of digging, I understand the logic of it, however I found it hard to implement it via code. A lot of mutable states and arrays to keep in check. For FYI I did use Claude Sonnet for help.
