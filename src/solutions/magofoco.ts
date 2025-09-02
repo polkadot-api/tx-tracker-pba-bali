@@ -5,6 +5,7 @@ import type {
   NewBlockEvent,
   NewTransactionEvent,
   OutputAPI,
+  Settled,
 } from "../types"
 
 export default function magofoco(api: API, outputApi: OutputAPI) {
@@ -42,11 +43,23 @@ export default function magofoco(api: API, outputApi: OutputAPI) {
     children: string | undefined
   }
 
+  interface TransactionToSettleInBlock {
+    transaction: string
+    arrivalIndex: number
+  }
+
+  interface SettledTransaction {
+    transaction: string
+    settled: Settled
+    arrivalIndex: number
+  }
+
   const transactions: string[] = []
   const blocks: Block[] = []
+  const settledTransactions: SettledTransaction[] = []
 
   const onNewBlock = ({ blockHash, parent }: NewBlockEvent) => {
-    const transactionsToSettleInBlock: string[] = []
+    const transactionsToSettleInBlock: TransactionToSettleInBlock[] = []
 
     if (!blocks.some((block) => block.blockHash === blockHash)) {
       blocks.push({ parent: parent, children: undefined, blockHash })
@@ -62,6 +75,37 @@ export default function magofoco(api: API, outputApi: OutputAPI) {
     }
 
     const blockBody = api.getBody(blockHash)
+
+    // This is for when the transaction is included in the block body
+    for (const transaction of blockBody) {
+      if (transactions.includes(transaction)) {
+        const alreadySettled = settledTransactions.some(
+          (s) =>
+            s.transaction === transaction && s.settled.blockHash === blockHash,
+        )
+        if (!alreadySettled) {
+          const arrivalIndex = transactions.indexOf(transaction)
+          transactionsToSettleInBlock.push({ transaction, arrivalIndex })
+        }
+      }
+    }
+
+    // This is for when the transaction is invalidated, like a user makes a transaction
+    // but the immediate block does not include it, but it includes another transaction
+    // of the same user that makes the first transaction invalid (ex. balance insufficient)
+    for (const transaction of transactions) {
+      if (blockBody.includes(transaction)) {
+        continue // It is the included in the previous loop
+      }
+      const alreadySettled = settledTransactions.some(
+        (s) =>
+          s.transaction === transaction && s.settled.blockHash === blockHash,
+      )
+      if (!alreadySettled && !api.isTxValid(blockHash, transaction)) {
+        const arrivalIndex = transactions.indexOf(transaction)
+        transactionsToSettleInBlock.push({ transaction, arrivalIndex })
+      }
+    }
   }
 
   const onNewTx = ({ value: transaction }: NewTransactionEvent) => {
@@ -76,8 +120,6 @@ export default function magofoco(api: API, outputApi: OutputAPI) {
     switch (event.type) {
       case "newBlock": {
         onNewBlock(event)
-        console.log(blocks)
-
         break
       }
       case "newTransaction": {
